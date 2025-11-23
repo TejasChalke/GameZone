@@ -1,9 +1,9 @@
-package com.sl.gamezone.lobby;
+package com.sl.gamezone.model.lobby;
 
-import com.sl.gamezone.event.GenericEvent;
-import com.sl.gamezone.event.SimplePokerEvent;
-import com.sl.gamezone.user.GenericUser;
-import com.sl.gamezone.user.SimplePokerUser;
+import com.sl.gamezone.model.event.GenericEvent;
+import com.sl.gamezone.model.event.SimplePokerEvent;
+import com.sl.gamezone.model.user.GenericUser;
+import com.sl.gamezone.model.user.SimplePokerUser;
 import com.sl.gamezone.util.Logger;
 
 import java.util.*;
@@ -13,28 +13,33 @@ public class SimplePokerLobby extends GenericLobby {
         TODO:
         Once all the rounds are over for a table, move the players from spectator to active (set spectator to false) after a delay of 15 s
         Would need to implement multi threading to keep checking time for both player turn and table start
+
+        Set folded to false once the round is over
      */
 
     private final int startingCoins;
-    private final int tableLimit;
-    private final int roundsPerTable;
-    private final List<Rule> rules;
-    public List<Integer> displayCards;
-    private int currentPot;
-    private int minBet;
-    private int[] maxBet;
-    private boolean gameEnded;
-    private boolean tableStarted;
-    private int tablesCompleted;
-    private int roundsCompleted;
-    private int roundPhase;
-    private int userToPlayIndex;
-    private int currentFoldCount;
-    private long timerStart;
-    private long timerEnd;
-    private Set<Integer> usedCards;
+    public int minBet;
+    public int[] maxBet;
+    public int currentPot;
 
-    public SimplePokerLobby(String id, int modeId, String name, int playerLimit, long turnTimeLimit, int startingCoins, int tableLimit, int roundsPerTable, final List<String> rules) {
+    private boolean tableStarted;
+    public int tablesCompleted;
+    private final int tableLimit;
+
+    private boolean roundStarted;
+    public int roundsCompleted;
+    private final int roundsPerTable;
+    private int roundPhase;
+
+    public int userToPlayIndex;
+    private int currentFoldCount;
+    private final Set<Integer> usedCards;
+    public final List<Rule> rules;
+    public List<Integer> displayCards;
+
+    public List<SimplePokerUser> winners;
+
+    public SimplePokerLobby(String id, int modeId, String name, int playerLimit, int turnTimeLimit, int startingCoins, int tableLimit, int roundsPerTable, final List<String> rules) {
         super(id, modeId, name, playerLimit, turnTimeLimit);
         this.startingCoins = startingCoins;
         this.tableStarted = false;
@@ -45,6 +50,15 @@ public class SimplePokerLobby extends GenericLobby {
             this.rules.add(Rule.ruleMap.get(ruleName));
             this.rules.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
         }
+        this.usedCards = new HashSet<>();
+    }
+
+    public boolean isRoundStarted() {
+        return roundStarted;
+    }
+
+    public boolean isTableStarted() {
+        return tableStarted;
     }
 
     @Override
@@ -55,15 +69,16 @@ public class SimplePokerLobby extends GenericLobby {
 
         if (GenericEvent.EVENT_JOIN_LOBBY.equals(event.getEventType())) handleJoin(event);
         else if (GenericEvent.EVENT_LEAVE_LOBBY.equals(event.getEventType())) handleLeave(event);
+        else if (GenericEvent.EVENT_START_GAME.equals(event.getEventType())) startGame();
         else if (SimplePokerEvent.EVENT_SIMPLE_POKER_CALL_RAISE.equals(event.getEventType())) handleCallOrRaise(event);
         else if (SimplePokerEvent.EVENT_SIMPLE_POKER_FOLD.equals(event.getEventType())) handleFold(event);
     }
 
     private void handleJoin(GenericEvent event) throws Exception {
-        SimplePokerUser user = new SimplePokerUser(event.getUserId(), event.getUserName(), event.isGuestEvent(),
+        SimplePokerUser user = new SimplePokerUser(event.getId(), event.getUserName(), event.isGuestEvent(),
                 tableStarted /* if the table is started the new player would be a spectator until the next table starts */,
                 startingCoins);
-        if (playerMap.containsKey(event.getUserId())) {
+        if (playerMap.containsKey(event.getId())) {
             throw new Exception("SimplePokerLobby.handleJoin() :: A user attempted to join the lobby with an existing userId : " + user.getId());
         }
 
@@ -79,37 +94,37 @@ public class SimplePokerLobby extends GenericLobby {
     }
 
     private void handleLeave(GenericEvent event) throws Exception {
-        if (!playerMap.containsKey(event.getUserId())) {
-            throw new Exception("SimplePokerLobby.handleLeave() :: A user attempted to leave the lobby without an existing userId : " + event.getUserId());
+        if (!playerMap.containsKey(event.getId())) {
+            throw new Exception("SimplePokerLobby.handleLeave() :: A user attempted to leave the lobby without an existing userId : " + event.getId());
         }
 
-        SimplePokerUser user = (SimplePokerUser) playerMap.get(event.getUserId());
-        if (user.getUserIndex() != players.size() - 1) {
-            // move the user at the end of the list, to the position of the user to remove (override the index)
-            SimplePokerUser lastIndexUser = (SimplePokerUser) players.get(players.size() - 1);
-            players.set(user.getUserIndex(), lastIndexUser);
-            lastIndexUser.setUserIndex(user.getUserIndex());
-        }
-
-        // remove the last user, this would remove the double entry and, the user to remove would no longer exists in the list
-        players.remove(players.size() - 1);
-        // remove the user from the map
+        SimplePokerUser user = (SimplePokerUser) playerMap.get(event.getId());
+        players.remove(user.getUserIndex());
         playerMap.remove(user.getId());
+
+        // Shift all players index one index to the left
+        for (int index = user.getUserIndex(); index < players.size(); index++) {
+            players.get(index).setUserIndex(index);
+        }
+
+        if (players.size() < 2) {
+            gameStarted = false;
+        }
     }
 
     private void handleCallOrRaise(SimplePokerEvent event) throws Exception {
-        if (!playerMap.containsKey(event.getUserId())) {
-            throw new Exception("SimplePokerLobby.handleCallOrRaise() :: User with userId : " + event.getUserId() + ", not found!");
+        if (!playerMap.containsKey(event.getId())) {
+            throw new Exception("SimplePokerLobby.handleCallOrRaise() :: User with userId : " + event.getId() + ", not found!");
         }
 
-        SimplePokerUser user = (SimplePokerUser) playerMap.get(event.getUserId());
+        SimplePokerUser user = (SimplePokerUser) playerMap.get(event.getId());
         if (user.getUserIndex() != userToPlayIndex) {
-            Logger.warn("SimplePokerLobby.handleCallOrRaise() :: User with userId : ", event.getUserId(),
+            Logger.warn("SimplePokerLobby.handleCallOrRaise() :: User with userId : ", event.getId(),
                     ", is playing when it is not the user's turn. Ignoring action...");
             return;
         }
         if (event.getBetAmount() > maxBet[user.getUserIndex()]) {
-            Logger.warn("SimplePokerLobby.handleCallOrRaise() :: User with userId : ", event.getUserId(),
+            Logger.warn("SimplePokerLobby.handleCallOrRaise() :: User with userId : ", event.getId(),
                     ", is betting more than max bet allowed : ", event.getBetAmount() + " > ", maxBet[user.getUserIndex()] + ". Defaulting to max bet...");
             event.setBetAmount(maxBet[user.getUserIndex()]);
         }
@@ -118,16 +133,17 @@ public class SimplePokerLobby extends GenericLobby {
         currentPot += event.getBetAmount();
         minBet = event.getBetAmount();
         updateTurn(userToPlayIndex + 1);
+        setWinners();
     }
 
     private void handleFold(SimplePokerEvent event) throws Exception {
-        if (!playerMap.containsKey(event.getUserId())) {
-            throw new Exception("SimplePokerLobby.handleFold() :: User with userId : " + event.getUserId() + ", not found!");
+        if (!playerMap.containsKey(event.getId())) {
+            throw new Exception("SimplePokerLobby.handleFold() :: User with userId : " + event.getId() + ", not found!");
         }
 
-        SimplePokerUser user = (SimplePokerUser) playerMap.get(event.getUserId());
+        SimplePokerUser user = (SimplePokerUser) playerMap.get(event.getId());
         if (user.getUserIndex() != userToPlayIndex) {
-            Logger.warn("SimplePokerLobby.handleFold() :: User with userId : ", event.getUserId(),
+            Logger.warn("SimplePokerLobby.handleFold() :: User with userId : ", event.getId(),
                     ", is playing when it is not the user's turn. Ignoring action...");
             return;
         }
@@ -135,18 +151,42 @@ public class SimplePokerLobby extends GenericLobby {
         user.setFolded(true);
         currentFoldCount++;
         updateTurn(userToPlayIndex + 1);
+        setWinners();
     }
 
     public void startGame() {
-        gameEnded = false;
+        gameStarted = true;
+        startNextTable();
+    }
+
+    public void startNextTable() {
         tableStarted = true;
-        currentPot = 0;
+        roundsCompleted = 0;
+        startNextRound();
+    }
+
+    public void startNextRound() {
+        roundStarted = true;
         roundPhase = 0;
-        currentFoldCount = 0;
+
+        currentPot = 0;
+        currentFoldCount = 0; // Would be incremented in setupPhase()
         minBet = 1;
 
-        for (GenericUser genericUser : players) {
-            SimplePokerUser user = (SimplePokerUser) genericUser;
+        displayCards.clear();
+        usedCards.clear();
+        winners = new ArrayList<>();
+
+        // Move the playing order
+        GenericUser firstUser = players.get(0);
+        players.remove(0);
+        players.add(firstUser);
+
+        for (int index = 0; index < players.size(); index++) {
+            SimplePokerUser user = (SimplePokerUser) players.get(index);
+            user.setUserIndex(index);
+            user.reset();
+
             for (int count = 0; count < 2; count++) {
                 int card = getRandomCard();
                 usedCards.add(card);
@@ -158,8 +198,35 @@ public class SimplePokerLobby extends GenericLobby {
         updateTurn(0);
     }
 
-    public void startNextTable() {
+    private void setupPhase(int phase) {
+        int nextMin = startingCoins * players.size();
+        maxBet = new int[players.size()];
 
+        for (int i = players.size() - 1; i >= 0; i--) {
+            SimplePokerUser user = (SimplePokerUser) players.get(i);
+            if (user.isFolded()) continue;
+
+            int userCoins = user.getCoins();
+            if (userCoins < minBet) {
+                user.setFolded(true);
+                currentFoldCount++;
+
+                if (phase == 0) {
+                    // remove the cards given to the player by default
+                    for (int card : user.getCards())
+                        usedCards.remove(card);
+                }
+            } else {
+                maxBet[i] = nextMin;
+                nextMin = Math.min(nextMin, userCoins);
+            }
+        }
+
+        if (phase == 0) return; // no cards would be displayed
+
+        int card = getRandomCard();
+        usedCards.add(card);
+        displayCards.add(card);
     }
 
     private void updateTurn(int turnIndex) {
@@ -180,11 +247,9 @@ public class SimplePokerLobby extends GenericLobby {
         }
 
         userToPlayIndex = turnIndex;
-        timerStart = System.currentTimeMillis();
-        timerEnd = timerStart + turnTimeLimit;
     }
 
-    private List<SimplePokerUser> getWinners() {
+    private void setWinners() {
         Set<String> winningIds = new HashSet<>();
         if (currentFoldCount == players.size() - 1) {
             for (GenericUser genericUser : players) {
@@ -196,7 +261,7 @@ public class SimplePokerLobby extends GenericLobby {
                 }
             }
         } else if (roundPhase < 3) {
-            return null; // no winner by default and all phases are not over yet
+            return; // no winner by default and all phases are not over yet
         } else {
             WinCondition prevWinCondition = null;
             for (GenericUser genericUser : players) {
@@ -211,7 +276,6 @@ public class SimplePokerLobby extends GenericLobby {
             }
         }
 
-        List<SimplePokerUser> winners = new ArrayList<>();
         for (GenericUser genericUser : players) {
             SimplePokerUser user = (SimplePokerUser) genericUser;
             if (winningIds.contains(user.getId())) {
@@ -222,16 +286,15 @@ public class SimplePokerLobby extends GenericLobby {
             }
         }
 
+        roundStarted = false;
         if (++roundsCompleted == roundsPerTable) {
-            roundsCompleted = 0;
             tableStarted = false;
             if (++tablesCompleted == tableLimit) {
-                gameEnded = true;
+                gameStarted = false;
             }
         }
-        timerStart = System.currentTimeMillis();
-        timerEnd = timerStart + 15000; // 15s for displaying the winner
-        return winners; // it can happen that all would be forced to fold because next min bet is too large, handle this
+
+        // It can happen that all would be forced to fold because next min bet is too large, handle this in the front end
     }
 
     private WinCondition getWinCondition(SimplePokerUser user) {
@@ -368,28 +431,6 @@ public class SimplePokerLobby extends GenericLobby {
             winningIds.add(currentWinCondition.userId); // Same priority and cards. Suit doesn't matter
         }
         return prevWinCondition;
-    }
-
-    private void setupPhase(int phase) {
-        int nextMin = startingCoins * players.size();
-        maxBet = new int[players.size()];
-
-        for (int i = players.size() - 1; i >= 0; i--) {
-            int userCoins = ((SimplePokerUser) players.get(i)).getCoins();
-            if (userCoins < minBet) {
-                ((SimplePokerUser) players.get(i)).setFolded(true);
-                currentFoldCount++;
-            } else {
-                maxBet[i] = nextMin;
-                nextMin = Math.min(nextMin, userCoins);
-            }
-        }
-
-        if (phase == 0) return; // no cards would be displayed
-
-        int card = getRandomCard();
-        usedCards.add(card);
-        displayCards.add(card);
     }
 
     private int getRandomCard() {

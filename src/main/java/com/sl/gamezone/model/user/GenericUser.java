@@ -1,4 +1,4 @@
-package com.sl.gamezone.user;
+package com.sl.gamezone.model.user;
 
 public class GenericUser {
     protected String id;

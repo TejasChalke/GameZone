@@ -1,24 +1,26 @@
-package com.sl.gamezone.lobby;
+package com.sl.gamezone.model.lobby;
 
-import com.sl.gamezone.event.GenericEvent;
-import com.sl.gamezone.user.GenericUser;
+import com.sl.gamezone.model.event.GenericEvent;
+import com.sl.gamezone.model.user.GenericUser;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledFuture;
 
-// In he lobby manager the mapping would be modeId -> id -> GenericLobby, id should be auto generated
 public abstract class GenericLobby {
     protected String id;
     protected int modeId;
     protected String name;
     protected int playerLimit;
-    protected long turnTimeLimit;
+    protected int turnTimeLimit;
     protected boolean gameStarted;
 
     protected Map<String, GenericUser> playerMap;
     protected Map<String, GenericUser> spectatorMap;
     protected List<GenericUser> players;
     protected List<GenericUser> spectators;
+
+    protected ScheduledFuture<?> timerFuture;
 
     public enum GameMode {
         SIMPLE_POKER("Simple Poker");
@@ -30,12 +32,12 @@ public abstract class GenericLobby {
         }
     }
 
-    public GenericLobby(String id, int modeId, String name, int playerLimit, long turnTimeLimit) {
+    public GenericLobby(String id, int modeId, String name, int playerLimit, int turnTimeLimit) {
         this.id = id;
         this.modeId = modeId;
         this.name = name;
         this.playerLimit = playerLimit;
-        this.turnTimeLimit = turnTimeLimit * 1000; // should be passed in seconds to convert into milliseconds
+        this.turnTimeLimit = turnTimeLimit;
         this.gameStarted = false;
     }
 
@@ -71,11 +73,11 @@ public abstract class GenericLobby {
         this.playerLimit = playerLimit;
     }
 
-    public long getTurnTimeLimit() {
+    public int getTurnTimeLimit() {
         return turnTimeLimit;
     }
 
-    public void setTurnTimeLimit(long turnTimeLimit) {
+    public void setTurnTimeLimit(int turnTimeLimit) {
         this.turnTimeLimit = turnTimeLimit;
     }
 
@@ -93,6 +95,14 @@ public abstract class GenericLobby {
 
     public List<GenericUser> getSpectators() {
         return spectators;
+    }
+
+    public void setTimerFuture(ScheduledFuture<?> timerFuture) {
+        this.timerFuture = timerFuture;
+    }
+
+    public ScheduledFuture<?> getTimerFuture() {
+        return timerFuture;
     }
 
     public abstract void handleEvent(GenericEvent event) throws Exception;

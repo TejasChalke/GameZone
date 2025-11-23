@@ -1,27 +1,30 @@
-package com.sl.gamezone.event;
+package com.sl.gamezone.model.event;
 
 public class GenericEvent {
     public static final String EVENT_JOIN_LOBBY = "EVENT_JOIN_LOBBY";
     public static final String EVENT_LEAVE_LOBBY = "EVENT_LEAVE_LOBBY";
+    public static final String EVENT_START_GAME = "EVENT_START_GAME";
 
-    String userId;
-    String userName;
-    String eventType;
-    boolean guestEvent;
+    protected String id;
+    protected String userName;
+    protected String lobbyId;
+    protected String eventType;
+    protected boolean guestEvent;
 
-    public GenericEvent(String playerId, String name, String eventType, boolean guestEvent) {
-        this.userId = playerId;
+    public GenericEvent(String id, String name, String lobbyId, String eventType, boolean guestEvent) {
+        this.id = id;
         this.userName = name;
+        this.lobbyId = lobbyId;
         this.eventType = eventType;
         this.guestEvent = guestEvent;
     }
 
-    public String getUserId() {
-        return userId;
+    public String getId() {
+        return id;
     }
 
-    public void setUserId(String userId) {
-        this.userId = userId;
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getEventType() {
@@ -30,6 +33,14 @@ public class GenericEvent {
 
     public void setEventType(String eventType) {
         this.eventType = eventType;
+    }
+
+    public String getLobbyId() {
+        return lobbyId;
+    }
+
+    public void setLobbyId(String lobbyId) {
+        this.lobbyId = lobbyId;
     }
 
     public String getUserName() {

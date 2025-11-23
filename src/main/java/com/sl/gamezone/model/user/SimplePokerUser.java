@@ -1,4 +1,4 @@
-package com.sl.gamezone.user;
+package com.sl.gamezone.model.user;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -63,5 +63,11 @@ public class SimplePokerUser extends GenericUser {
 
     public List<Integer> getCards() {
         return cards;
+    }
+
+    public void reset() {
+        coinsWon = coinsLost = coins = currentBet = 0;
+        folded = false;
+        cards.clear();
     }
 }

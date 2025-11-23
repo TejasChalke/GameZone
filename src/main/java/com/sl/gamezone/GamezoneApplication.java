@@ -1,4 +1,4 @@
-package com._l.gamezone;
+package com.sl.gamezone;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
